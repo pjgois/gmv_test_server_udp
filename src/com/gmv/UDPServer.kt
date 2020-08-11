@@ -1,8 +1,6 @@
 package com.gmv
 
-import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
-import java.io.IOException
+import java.io.*
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.text.MessageFormat
@@ -12,35 +10,52 @@ const val ETX: Byte = 0x03
 
 class UDPServer : Thread() {
 
-    private val socket: DatagramSocket = DatagramSocket(4445)
+    private val datagramSocket = DatagramSocket(4445)
     private val buf = ByteArray(256)
     private var running = false
 
     override fun run() {
 
         running = true
-        while (running /*!socket.isClosed*/) {
-            var packet = DatagramPacket(buf, buf.size)
-            socket.receive(packet)
-            val address = packet.address
-            val port = packet.port
+        while (running /*!datagramSocket.isClosed*/) {
 
-            println(MessageFormat.format("Received message: {0}", String(packet.data, 0, packet.length)))
+            var datagramPacket = DatagramPacket(buf, buf.size)
+
+            datagramSocket.receive(datagramPacket) // This one is the blocking one!
+
+            val address = datagramPacket.address
+            val port = datagramPacket.port
+
+            val byteArrayInputStream = ByteArrayInputStream(datagramPacket.data)
+            val byteArrayOutputStream = ByteArrayOutputStream()
+            val dataInputStream = DataInputStream(byteArrayInputStream)
+
+            var readInt: Int?
+            do {
+                readInt = byteArrayInputStream.read()
+                when (readInt) {
+                    STX.toInt() -> byteArrayOutputStream.write(readInt)
+                    ETX.toInt() -> {
+                        byteArrayOutputStream.write(readInt)
+                        println(MessageFormat.format("Received new message: {0}", byteArrayOutputStream))
+                        byteArrayOutputStream.reset()
+                    }
+                    else -> byteArrayOutputStream.write(readInt.toInt())
+                }
+            } while (readInt != -1)
 
             val toSendByteArray = msgByteArray()
 
-            packet = DatagramPacket(toSendByteArray, toSendByteArray.size, address, port)
+            datagramPacket = DatagramPacket(toSendByteArray, toSendByteArray.size, address, port)
 
-            socket.send(packet)
+            datagramSocket.send(datagramPacket)
         }
-        socket.close()
+        datagramSocket.close()
     }
 
     private fun msgByteArray(): ByteArray {
 
-        val ok = "OK"
-        val nok = "NOK"
-        val msg = ok
+        val msg = "OK"
         try {
             ByteArrayOutputStream().use { byteArrayOutputStream ->
                 DataOutputStream(byteArrayOutputStream).use { dataOutputStream ->
